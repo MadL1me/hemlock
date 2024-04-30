@@ -1,0 +1,4 @@
+version: 1
+vendor_dir: vendor2
+external_deps:
+  - github.com/bufbuild/protoc-gen-validate/validate/validate.proto@master
