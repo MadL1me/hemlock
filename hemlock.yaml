@@ -1,4 +1,4 @@
 version: 1
-vendor_dir: vendor2
+vendor_dir: vendor
 external_deps:
-  - github.com/bufbuild/protoc-gen-validate/validate/validate.proto@master
+  - github.com/MadL1me/RhythmGE/src/index.scss@68f7379
