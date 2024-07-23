@@ -22,3 +22,4 @@ reqwest = { version = "0.12.4", features = ["blocking"] }
 tokio = { version = "1", features = ["full"] }
 openssl = { version = "0.10.35", features = ["vendored"] }
 regex = "1.10.4"
+git2 = "0.14"

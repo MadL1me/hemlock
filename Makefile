@@ -10,7 +10,6 @@ build-linux-amd64:
 	cd target/x86_64-pc-windows-gnu && tar -czf hemlock-linux.tar.gz hemlock
 	cd target/x86_64-pc-windows-gnu && shasum -a 256 hemlock-linux.tar.gz
 
-
 build-mac:
 	cargo build --release --target=x86_64-apple-darwin
 	cd target/x86_64-apple-darwin/release && tar -czf hemlock-mac.tar.gz hemlock
