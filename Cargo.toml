@@ -26,3 +26,5 @@ git2 = "0.14"
 thiserror = "1.0.63"
 time = "0.3.36"
 indicatif = "0.17.8"
+colored = "2.1.0"
+

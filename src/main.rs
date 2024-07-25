@@ -2,7 +2,8 @@ mod remote_sources;
 mod vendors;
 mod cli_progress;
 
-use std::{fs::{self}, path::PathBuf};
+use std::{fs::{self}, path::PathBuf, string};
+use colored::Colorize;
 use std::fmt::format;
 use std::path::Path;
 use clap::Parser;
@@ -38,7 +39,7 @@ struct YamlConfigV1 {
     external_deps: Vec<ExternalDep>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExternalDep {
     pub import: String,
 
@@ -65,7 +66,7 @@ fn main() -> Result<(), AnyError> {
     let config_path = args.config.ok_or("No config path provided")?;
 
     // Read the configuration file
-    let file_res = fs::read_to_string(config_path)
+    let file_res = fs::read_to_string(config_path.clone())
         .map_err(|err| format!("Failed to read the config file: {}", err))?;
 
     // Parse the YAML content
@@ -95,17 +96,27 @@ fn main() -> Result<(), AnyError> {
         default_branch: default_branch.to_string(),
     };
 
+    println!("{} {}", "Starting vendoring process for configuration in".bold(),
+             config_path.clone().to_str().unwrap().bold().blue());
+
+    let mut sb = String::new();
+
+    sb.push_str("");
+
+
     for dep in config.external_deps {
-        let source = get_git_vendor_source(dep, default_branch).unwrap();
+        let source = get_git_vendor_source(dep.clone(), default_branch).unwrap();
+
+        println!("---");
+        println!("{} {}", "Starting vendoring url:".bold(),
+                 dep.import.clone().bold().blue());
 
         vendor(source.clone(), vendoringOpts.clone());
-
-        println!("external dep parsed successfully: {:?}", source);
-
-        if args.verbose {
-            println!("external dep parsed successfully: {:?}", source);
-        }
     }
+
+    println!();
+    println!();
+    println!("{}", "Vendoring completed successfully!".bold().green());
 
     Ok(())
 }

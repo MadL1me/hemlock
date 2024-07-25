@@ -23,7 +23,7 @@ pub struct GitVendorSource {
 
 pub fn vendor(source: GitVendorSource, opts: VendoringOptions) -> Result<(), AnyError> {
     let bar = ProgressBar::new(10);
-    bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:40.cyan/blue} {pos:>7}/{len:7} {msg}").unwrap());
+    bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {spinner} {bar:20.cyan/blue} {pos:>6}/{len:6} {msg}").unwrap());
     bar.enable_steady_tick(Duration::from_millis(50));
 
     let clone_dir = format!("{}/{}", opts.vendor_dir, source.clone_dir);
