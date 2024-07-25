@@ -11,5 +11,5 @@ external_deps:
 #    tag: 68f7379
 #    file: MyContract.yaml
 #  - import: github.com/MadL1me/RhythmGE/src/index.scss@68f7379
-#  - import: github.com/MadL1me/RhythmGE/src/index.scss
-  - import: git.tech.manee.io/antifraud/antifraud.event.service.net.v1//src/Event.Api/Contracts/openapi.yaml
+  - import: github.com/MadL1me/RhythmGE/src/index.scss@main
+  - import: git.tech.manee.io/antifraud/antifraud.event.service.net.v1/src/Event.Api/Contracts/openapi.yaml@main
