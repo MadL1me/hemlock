@@ -7,23 +7,34 @@ use std::{fs, str};
 use regex::Regex;
 use crate::vendors::AnyError;
 use thiserror::Error;
-use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
+use crate::os;
 
 #[derive(Debug, Clone)]
 pub struct GitVendorSource {
     pub original_source: String,
-    clone_path: String,
+    clone_url_ssh: String,
+    clone_url_https: String,
     clone_dir: String,
     commit_or_branch: String,
     glob_path: String,
     download_folder: String,
 }
 
+#[derive(Debug, Error)]
+pub enum VendorError {
+    #[error("Failed to clean vendor directory")]
+    FolderCleanError,
+    #[error("Command execution failed: {0}")]
+    CommandExecutionError(String),
+    #[error("Error fetching glob path")]
+    FetchGlobPathError(#[from] io::Error),
+}
+
 pub fn vendor(source: GitVendorSource, opts: VendoringOptions) -> Result<(), AnyError> {
     let bar = ProgressBar::new(10);
-    bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {spinner} {bar:20.cyan/blue} {pos:>6}/{len:6} {msg}").unwrap());
+    bar.set_style(ProgressStyle::with_template("[{elapsed_precise}] {bar:20.cyan/blue} {pos:>6}/{len:6} {msg}").unwrap());
     bar.enable_steady_tick(Duration::from_millis(50));
 
     let clone_dir = format!("{}/{}", opts.vendor_dir, source.clone_dir);
@@ -31,39 +42,44 @@ pub fn vendor(source: GitVendorSource, opts: VendoringOptions) -> Result<(), Any
 
     bar.inc(1);
 
+    clean_vendor_dir(&*opts.vendor_dir).map_err(|_| VendorError::FolderCleanError)?;
+
     fetch_glob_path(
-        &*source.clone_path,
+        &*source.clone_url_ssh,
         &*source.commit_or_branch,
         &*source.glob_path,
         &*clone_dir,
-        &bar).expect("ADADA");
+        &bar)?;
 
     bar.inc(1);
 
     let root_dir: Vec<&str> = source.clone_dir.split('/').collect();
 
-    set_permissions(Path::new("vendor")).expect("123");
+    os::set_permissions(Path::new("vendor"))?;
 
-    copy_dir_all(Path::new(clone_dir.as_str()), Path::new(copy_path.as_str())).expect("TODO: panic message");
+    copy_dir_all(Path::new(clone_dir.as_str()), Path::new(copy_path.as_str()))?;
 
-    fs::remove_dir_all(format!("{}/{}", opts.vendor_dir.clone(), root_dir[0])).expect("FUUUCK");
+    fs::remove_dir_all(format!("{}/{}", opts.vendor_dir.clone(), root_dir[0]))?;
 
     bar.finish();
 
     Ok(())
 }
 
-fn run_command(cmd: &mut Command) -> io::Result<()> {
-    let output = cmd.output()?;
+fn clean_vendor_dir(path: &str) -> io::Result<()>  {
+    fs::remove_dir_all(path)
+}
+
+fn run_command(cmd: &mut Command) -> Result<(), VendorError> {
+    let output = cmd.output().map_err(|e| VendorError::CommandExecutionError(e.to_string()))?;
     if !output.status.success() {
-        eprintln!("Command failed with status: {:?}", output.status);
-        eprintln!("stderr: {}", String::from_utf8_lossy(&output.stderr));
-        Err(io::Error::new(io::ErrorKind::Other, "Command execution failed"))
-    } else {
-        let s = String::from_utf8(output.stdout).expect("NOT VALID UTF8");
-        // println!("{:?}", s);
-        Ok(())
+        return Err(VendorError::CommandExecutionError(format!(
+            "Command failed with status: {:?}\nstderr: {}",
+            output.status,
+            String::from_utf8_lossy(&output.stderr)
+        )));
     }
+    Ok(())
 }
 
 fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
@@ -80,7 +96,7 @@ fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> 
     Ok(())
 }
 
-fn fetch_glob_path(repo_url: &str, branch: &str, glob_path: &str, target_dir: &str, bar: &ProgressBar) -> io::Result<()> {
+fn fetch_glob_path(repo_url: &str, branch: &str, glob_path: &str, target_dir: &str, bar: &ProgressBar) -> Result<(), VendorError> {
     // Initialize a new empty repository in the target directory
     run_command(Command::new("git").arg("init").arg("--bare").arg(format!("{}/.git", target_dir)))?;
 
@@ -159,25 +175,6 @@ fn fetch_glob_path(repo_url: &str, branch: &str, glob_path: &str, target_dir: &s
     Ok(())
 }
 
-fn set_permissions(path: &std::path::Path) -> io::Result<()> {
-    if path.is_file() {
-        let mut perms = fs::metadata(&path)?.permissions();
-        perms.set_mode(0o644); // rw-r--r--
-        fs::set_permissions(&path, perms)?;
-    } else if path.is_dir() {
-        let mut perms = fs::metadata(&path)?.permissions();
-        perms.set_mode(0o755); // rwxr-xr-x
-        fs::set_permissions(&path, perms)?;
-
-        for entry in fs::read_dir(path)? {
-            let entry = entry?;
-            let entry_path = entry.path();
-            set_permissions(&entry_path)?; // Recurse into directories
-        }
-    }
-    Ok(())
-}
-
 #[derive(Debug, Error)]
 pub enum GitVendorError {
     #[error("Invalid URL format")]
@@ -218,13 +215,15 @@ pub fn get_git_vendor_source(dep: ExternalDep, default_branch: &str) -> Result<G
         return Err(Box::new(GitVendorError::GlobPathError));
     }
 
-    let clone_url = format!("git@{}:{}.git", host, user_repo);
+    let clone_url_ssh = format!("git@{}:{}.git", host, user_repo);
+    let clone_url_https = format!("https://{}:{}.git", host, user_repo);
     let clone_dir = format!("clone@{}/{}/{}", host, user_repo, commit_or_branch);
     let download_dir = format!("{}/{}/{}", host, user_repo, commit_or_branch);
 
     Ok(GitVendorSource {
         original_source: dep.import.clone(),
-        clone_path: clone_url,
+        clone_url_ssh,
+        clone_url_https,
         clone_dir,
         commit_or_branch,
         glob_path: path.to_string(),

@@ -1,17 +1,15 @@
 mod remote_sources;
 mod vendors;
 mod cli_progress;
+mod os;
+mod error;
 
-use std::{fs::{self}, path::PathBuf, string};
+use std::{fs::{self}, path::PathBuf};
 use colored::Colorize;
-use std::fmt::format;
-use std::path::Path;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
 use crate::vendors::AnyError;
 use crate::vendors::remote_git_vendor::{get_git_vendor_source, vendor};
-use std::time::Duration;
-use indicatif::{ProgressBar, ProgressStyle};
 
 #[derive(Parser, Debug)]
 #[command(name = "hemlock")]
@@ -79,19 +77,17 @@ fn main() -> Result<(), AnyError> {
     }
 
     if config.default_branch.is_none() {
-        config.default_branch = Some(String::from("master"));
+        config.default_branch = Some(String::from("main"));
     }
 
     if config.vendor_dir.is_none() {
         config.vendor_dir = Some(String::from("vendor"));
     }
 
-    //println!("Config loaded successfully: {:?}", config);
-
     // Extract default branch as &str
     let default_branch = config.default_branch.as_deref().unwrap();
 
-    let vendoringOpts = VendoringOptions {
+    let vendoring_opts = VendoringOptions {
         vendor_dir: config.vendor_dir.unwrap(),
         default_branch: default_branch.to_string(),
     };
@@ -99,19 +95,21 @@ fn main() -> Result<(), AnyError> {
     println!("{} {}", "Starting vendoring process for configuration in".bold(),
              config_path.clone().to_str().unwrap().bold().blue());
 
-    let mut sb = String::new();
-
-    sb.push_str("");
-
-
     for dep in config.external_deps {
-        let source = get_git_vendor_source(dep.clone(), default_branch).unwrap();
+        match get_git_vendor_source(dep.clone(), default_branch) {
+            Ok(source) => {
+                println!("---");
+                println!("{} {}", "Starting vendoring url:".bold(), dep.import.clone().bold().blue());
 
-        println!("---");
-        println!("{} {}", "Starting vendoring url:".bold(),
-                 dep.import.clone().bold().blue());
-
-        vendor(source.clone(), vendoringOpts.clone());
+                if let Err(err) = vendor(source, vendoring_opts.clone()) {
+                    eprintln!("{} {}", "Failed to vendor: ".bold(), err);
+                }
+            }
+            Err(err) => {
+                eprintln!("{} {}", "Failed to parse URL for external dependency: ".bold(), err);
+                continue;
+            }
+        }
     }
 
     println!();
@@ -121,7 +119,6 @@ fn main() -> Result<(), AnyError> {
     Ok(())
 }
 
-//
 // // All cases needs to be addressed:
 //
 // // https://github.com/MadL1me/RhythmGE/blob/68f7379aa960a365d7eb61577d536307334a4e2e/src/index.scss
