@@ -1,15 +1,14 @@
-mod remote_sources;
 mod vendors;
-mod cli_progress;
 mod os;
-mod error;
 
 use std::{fs::{self}, path::PathBuf};
 use colored::Colorize;
 use clap::Parser;
 use serde::{Deserialize, Serialize};
+use crate::os::clean_dir;
 use crate::vendors::AnyError;
-use crate::vendors::remote_git_vendor::{get_git_vendor_source, vendor};
+use crate::vendors::local_file_vendor::{get_local_vendor_source, local_vendor};
+use crate::vendors::remote_git_vendor::{get_git_vendor_source, vendor, VendorError};
 
 #[derive(Parser, Debug)]
 #[command(name = "hemlock")]
@@ -31,7 +30,7 @@ struct YamlConfigV1 {
     default_branch: Option<String>,
 
     #[serde(default)]
-    local_deps: Vec<String>,
+    local_deps: Vec<LocalDep>,
 
     #[serde(default)]
     external_deps: Vec<ExternalDep>,
@@ -43,6 +42,24 @@ pub struct ExternalDep {
 
     #[serde(default)]
     pub tag: Option<String>,
+
+    #[serde(default)]
+    pub target_file: Option<String>,
+
+    #[serde(default)]
+    pub target_dir: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(untagged)]
+pub enum LocalDep {
+    Simple(String),
+    Structured(LocalDepStruct),
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct LocalDepStruct {
+    pub import: String,
 
     #[serde(default)]
     pub target_file: Option<String>,
@@ -95,13 +112,32 @@ fn main() -> Result<(), AnyError> {
     println!("{} {}", "Starting vendoring process for configuration in".bold(),
              config_path.clone().to_str().unwrap().bold().blue());
 
+    clean_dir(&vendoring_opts.vendor_dir).map_err(|_| VendorError::FolderCleanError);
+
     for dep in config.external_deps {
         match get_git_vendor_source(dep.clone(), default_branch) {
             Ok(source) => {
                 println!("---");
                 println!("{} {}", "Starting vendoring url:".bold(), dep.import.clone().bold().blue());
-
+    
                 if let Err(err) = vendor(source, vendoring_opts.clone()) {
+                    eprintln!("{} {}", "Failed to vendor: ".bold(), err);
+                }
+            }
+            Err(err) => {
+                eprintln!("{} {}", "Failed to parse URL for external dependency: ".bold(), err);
+                continue;
+            }
+        }
+    }
+
+    for dep in config.local_deps {
+        match get_local_vendor_source(dep.clone(), &vendoring_opts.vendor_dir) {
+            Ok(source) => {
+                println!("---");
+                println!("{} {}", "Copying local files:".bold(), source.original_source.clone().bold().blue());
+
+                if let Err(err) = local_vendor(source, vendoring_opts.clone()) {
                     eprintln!("{} {}", "Failed to vendor: ".bold(), err);
                 }
             }

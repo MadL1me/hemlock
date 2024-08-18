@@ -18,7 +18,7 @@ build-mac:
 build-windows:
 	cargo build --release --target=x86_64-pc-windows-gnu
 	cd target/x86_64-pc-windows-gnu/release && tar -czf hemlock-windows.tar.gz hemlock.exe
-	cd target/x86_64-pc-windows-gnu/release && shasum -a 256 hemlock-windows.tar.gz
+	cd target/x86_64-pc-windows-gnu/release && shasum -a 256 hemlock.exe
 
 it-linux:
 	docker run -it -v ./target/x86_64-unknown-linux-gnu/release:/HEMLOCK --platform linux/amd64 ubuntu

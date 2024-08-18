@@ -10,6 +10,7 @@ use thiserror::Error;
 use std::time::Duration;
 use indicatif::{ProgressBar, ProgressStyle};
 use crate::os;
+use crate::os::{clean_dir, copy_dir_all};
 
 #[derive(Debug, Clone)]
 pub struct GitVendorSource {
@@ -42,13 +43,11 @@ pub fn vendor(source: GitVendorSource, opts: VendoringOptions) -> Result<(), Any
 
     bar.inc(1);
 
-    clean_vendor_dir(&*opts.vendor_dir).map_err(|_| VendorError::FolderCleanError)?;
-
     fetch_glob_path(
-        &*source.clone_url_ssh,
-        &*source.commit_or_branch,
-        &*source.glob_path,
-        &*clone_dir,
+        &source.clone_url_ssh,
+        &source.commit_or_branch,
+        &source.glob_path,
+        &clone_dir,
         &bar)?;
 
     bar.inc(1);
@@ -57,17 +56,19 @@ pub fn vendor(source: GitVendorSource, opts: VendoringOptions) -> Result<(), Any
 
     os::set_permissions(Path::new("vendor"))?;
 
-    copy_dir_all(Path::new(clone_dir.as_str()), Path::new(copy_path.as_str()))?;
+    let copy_to: String = copy_path
+        .split("/")
+        .collect::<Vec<_>>()  // Collect parts into a Vec<&str>
+        .split_last().unwrap().1  // Get the slice of all but the last element
+        .join("/");
+
+    copy_dir_all(Path::new(clone_dir.as_str()), Path::new(copy_to.as_str()))?;
 
     fs::remove_dir_all(format!("{}/{}", opts.vendor_dir.clone(), root_dir[0]))?;
 
     bar.finish();
 
     Ok(())
-}
-
-fn clean_vendor_dir(path: &str) -> io::Result<()>  {
-    fs::remove_dir_all(path)
 }
 
 fn run_command(cmd: &mut Command) -> Result<(), VendorError> {
@@ -78,20 +79,6 @@ fn run_command(cmd: &mut Command) -> Result<(), VendorError> {
             output.status,
             String::from_utf8_lossy(&output.stderr)
         )));
-    }
-    Ok(())
-}
-
-fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> io::Result<()> {
-    fs::create_dir_all(&dst)?;
-    for entry in fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(entry.path(), dst.as_ref().join(entry.file_name()))?;
-        } else {
-            fs::copy(entry.path(), dst.as_ref().join(entry.file_name()))?;
-        }
     }
     Ok(())
 }
